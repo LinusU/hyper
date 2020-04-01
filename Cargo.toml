@@ -33,12 +33,17 @@ log = "0.4"
 pin-project = "0.4"
 time = "0.1"
 tower-service = "0.3"
-tokio = { version = "0.2", features = ["sync"] }
+tokio = { version = "0.2.11", features = ["sync"] }
 want = "0.3"
 
 # Optional
 
 net2 = { version = "0.2.32", optional = true }
+lambda = { git = "https://github.com/awslabs/aws-lambda-rust-runtime", optional = true }
+lambda_http = { git = "https://github.com/LinusU/aws-lambda-rust-runtime", rev = "7528663", optional = true }
+serde = { version = "1.0", optional = true }
+serde_derive = { version = "1.0", optional = true }
+serde_json = { version = "1.0", optional = true }
 
 [dev-dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["alloc"] }
@@ -49,7 +54,7 @@ spmc = "0.3"
 serde = "1.0"
 serde_derive = "1.0"
 serde_json = "1.0"
-tokio = { version = "0.2.2", features = ["fs", "macros", "io-std", "rt-util", "sync", "time", "test-util"] }
+tokio = { version = "0.2.11", features = ["fs", "macros", "io-std", "rt-util", "sync", "time", "test-util"] }
 tokio-test = "0.2"
 tower-util = "0.3"
 url = "1.0"
@@ -58,6 +63,9 @@ url = "1.0"
 default = [
     "runtime",
     "stream",
+
+    # FIXME: REMOVE!
+    "foolambda",
 ]
 runtime = [
     "tcp",
@@ -69,6 +77,13 @@ tcp = [
     "tokio/tcp",
     "tokio/time",
 ]
+foolambda = [
+    "lambda",
+    "lambda_http",
+    "serde",
+    "serde_derive",
+    "serde_json",
+]
 
 # `impl Stream` for things
 stream = []
@@ -76,6 +91,10 @@ stream = []
 # internal features used in CI
 nightly = []
 __internal_happy_eyeballs_tests = []
+
+# [patch.crates-io]
+# lambda_http = { git = "https://github.com/LinusU/aws-lambda-rust-runtime", branch = "http-0-2" }
+# lambda_runtime_client = { git = "https://github.com/LinusU/aws-lambda-rust-runtime", branch = "http-0-2" }
 
 [package.metadata.docs.rs]
 features = [
@@ -208,4 +227,3 @@ required-features = ["runtime", "stream"]
 name = "server"
 path = "tests/server.rs"
 required-features = ["runtime"]
-

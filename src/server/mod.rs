@@ -57,6 +57,11 @@ mod shutdown;
 #[cfg(feature = "tcp")]
 mod tcp;
 
+// #[cfg(feature = "lambda")]
+// use lambda_http::{lambda, IntoResponse, Request, RequestExt};
+// #[cfg(feature = "lambda")]
+// use lambda_runtime::{Context, error::HandlerError};
+
 use std::error::Error as StdError;
 use std::fmt;
 #[cfg(feature = "tcp")]
@@ -79,6 +84,24 @@ use self::conn::{Http as Http_, NoopWatcher, SpawnAll};
 use self::shutdown::{Graceful, GracefulWatcher};
 #[cfg(feature = "tcp")]
 use self::tcp::AddrIncoming;
+
+// struct Foobar<T: Payload + Into<Body>>(Response<T>);
+
+// impl<T> IntoResponse for Foobar<T> {
+//     fn into_response(self) -> Response<Body> {
+//         let (parts, body) = self.0.into_parts();
+//         Response::from_parts(parts, body.into())
+//     }
+// }
+
+// impl Into<lambda_http::Body> for crate::body::Body {
+//     fn into(self) -> lambda_http::Body {
+//         // let bytes = crate::body::to_bytes(self);
+//         lambda_http::Body::from("Test".to_owned())
+//     }
+// }
+
+
 
 /// A listening HTTP server that accepts connections in both HTTP1 and HTTP2 by default.
 ///
@@ -423,6 +446,7 @@ impl<I, E> Builder<I, E> {
     /// }
     /// # }
     /// ```
+    #[cfg(not(feature = "lambda"))]
     pub fn serve<S, B>(self, new_service: S) -> Server<I, S, E>
     where
         I: Accept,
@@ -437,6 +461,70 @@ impl<I, E> Builder<I, E> {
         let serve = self.protocol.serve(self.incoming, new_service);
         let spawn_all = serve.spawn_all();
         Server { spawn_all }
+    }
+
+    /// Run this shit on Lambda!
+    #[cfg(feature = "lambda")]
+    pub fn serve<S, B>(self, mut new_service: S) -> Server<I, S, E>
+    where
+        I: Accept,
+        I::Error: Into<Box<dyn StdError + Send + Sync>>,
+        I::Conn: AsyncRead + AsyncWrite + Unpin + Send + 'static,
+        S: MakeServiceRef<I::Conn, Body, ResBody = B>,
+        S::Error: Into<Box<dyn StdError + Send + Sync>>,
+        B: Payload,
+        E: NewSvcExec<I::Conn, S::Future, S::Service, E, NoopWatcher>,
+        E: H2Exec<<S::Service as HttpService<Body>>::Future, B>,
+    {
+        let mut rt = tokio::runtime::Runtime::new().unwrap();
+
+        let conn: I::Conn = unsafe { std::mem::zeroed() };
+        eprintln!("CREATING SERVICE");
+        let handler = new_service.make_service_ref(&conn);
+        eprintln!("GETTING HANDLER");
+        let mut handler = rt.block_on(handler).map_err(|_| "x".to_owned()).expect("Failed to create handler");
+
+        async fn do_the_work_here() -> Result<lambda_http::LambdaResponse, Box<dyn std::error::Error + Send + Sync + 'static>> {
+            Ok(lambda_http::LambdaResponse {
+                status_code: 200,
+                status_description: None,
+                headers: http::HeaderMap::new(),
+                multi_value_headers: http::HeaderMap::new(),
+                body: Some(lambda_http::Body::Text("Hello, World!".to_string())),
+                is_base64_encoded: false,
+            })
+        }
+
+        eprintln!("STARTING");
+        rt.block_on(lambda::run(lambda::handler_fn(
+            move |event: lambda_http::LambdaRequest<'_>| {
+                eprintln!("HANDLING REQUEST");
+                do_the_work_here()
+            }
+        )));
+        // lambda_http::start(
+        //     // |request: http::request::Request<lambda_http::Body>, context: lambda_runtime::Context| -> Result<_, HandlerError> {
+        //     move |request: http::request::Request<lambda_http::Body>, _context| {
+        //         eprintln!("HANDLING REQUEST");
+        //         let request = request.map(|_body| crate::body::Body::empty());
+        //         eprintln!("MAPPED REQUEST");
+        //         let response = handler.call(request);
+        //         eprintln!("CALLED HANDLER");
+        //         let response = rt.block_on(response);
+        //         eprintln!("GOT RESPONSE");
+        //         let response = response.map_err(|_| "x".to_owned()).expect("Failed to handle request");
+        //         eprintln!("MAPPED RESPONSE");
+        //         // let (parts, body) = response.into_parts();
+        //         // let body = crate::body::to_bytes(body);
+        //         // Ok("Hello, World!".to_owned())
+        //         Ok(response)
+        //     },
+        //     None,
+        // );
+
+
+
+        panic!("Lambda stopped listening");
     }
 }
 
